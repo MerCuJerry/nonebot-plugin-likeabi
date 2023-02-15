@@ -120,7 +120,7 @@ async def message_checker(event: MessageEvent, state: T_State) -> bool:
 
         if not (
             check_list(check_filter, filter_checks)
-            and check_list(check_match, match_checks)
+            and check_list(check_match, match_checks, True)
         ):
             continue
 
@@ -201,11 +201,11 @@ query = on_command("查询好感度", aliases={"好感度查询"}, priority=98 ,
 
 @query.handle()
 async def queryhandler(matcher: Matcher, event: MessageEvent):
-    result = "您的好感度为"+str(sqlc.sql_select("LIKEABI", int(event.get_user_id())))
+    result = "您的好感度为"+str(sqlc.sql_select("LIKEABI", event.get_user_id()))
     reply = MessageSegment.reply(event.message_id)
     await matcher.finish(reply + result)
 
-reload_matcher = on_command("a重载自动回复", permission=SUPERUSER)
+reload_matcher = on_command("重载自动回复", permission=SUPERUSER)
 
 @reload_matcher.handle()
 async def _(matcher: Matcher):
