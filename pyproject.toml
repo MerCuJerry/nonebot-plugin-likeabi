@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "nonebot-plugin-autoreply"
+name = "nonebot-plugin-likeabi"
 version = "0.2.1"
-description = "As the name suggests"
-authors = ["lgc2333 <lgc2333@126.com>"]
+description = "在自动回复的基础上加入好感度和每日回复上限"
+authors = ["MerCuJerry & lgc2333 <lgc2333@126.com> "]
 license = "MIT"
 readme = "README.md"
 
@@ -12,6 +12,7 @@ nonebot2 = ">=2.0.0rc1"
 pydantic = "^1.10.4"
 nonebot-adapter-onebot = ">=2.1.0"
 typing-extensions = "^4.4.0"
+xpinyin = ">=0.7.6"
 
 [build-system]
 requires = ["poetry-core"]
