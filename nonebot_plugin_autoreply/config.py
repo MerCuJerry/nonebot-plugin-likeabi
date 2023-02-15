@@ -7,7 +7,7 @@ from pydantic import BaseModel
 
 T = TypeVar("T")
 
-DATA_PATH = Path.cwd() / "data" / "autoreply"
+DATA_PATH = Path.cwd() / "data" / "likeabi"
 if not DATA_PATH.exists():
     DATA_PATH.mkdir(parents=True)
 
@@ -46,6 +46,8 @@ class FilterModel(BaseModel, Generic[T]):
 class ReplyEntryModel(BaseModel):
     matches: List[MatchModel]
     replies: List[ReplyType]
+    point: int = 0
+    limit: int = 0
     groups: FilterModel[int] = FilterModel(values=[])
     users: FilterModel[int] = FilterModel(values=[])
 

@@ -3,8 +3,9 @@ import random
 import re
 from itertools import starmap
 from typing import Callable, Iterable, List, Optional, Tuple, TypeVar, cast
+from xpinyin import Pinyin
 
-from nonebot import on_command, on_message
+from nonebot import on_command, on_message, get_driver
 from nonebot.adapters.onebot.v11 import (
     GroupMessageEvent,
     Message,
@@ -26,10 +27,29 @@ from .config import (
     config,
     reload_replies,
     replies,
+    DATA_PATH,
 )
+from nonebot import require
+require("nonebot_plugin_apscheduler")
+from nonebot_plugin_apscheduler import scheduler
+
+from .db import _sql
 
 T = TypeVar("T")
 TArgs = TypeVarTuple("TArgs")
+
+sqlc : _sql
+
+def start_db_connection():
+    global sqlc
+    sqlc = _sql(DATA_PATH)
+
+def end_db_connection():
+    global sqlc
+    del sqlc
+    
+get_driver().on_startup(start_db_connection)
+get_driver().on_shutdown(end_db_connection)
 
 
 def check_list(
@@ -53,7 +73,7 @@ def check_filter(filter: FilterModel[T], val: Optional[T]) -> bool:
 def check_match(match: MatchModel, event: MessageEvent) -> bool:
     if match.to_me and (not event.is_tome()):
         return False
-
+    
     msg_str = str(event.message)
     msg_plaintext = event.message.extract_plain_text()
     match_template = match.match
@@ -100,11 +120,14 @@ async def message_checker(event: MessageEvent, state: T_State) -> bool:
 
         if not (
             check_list(check_filter, filter_checks)
-            and check_list(check_match, match_checks, True)
+            and check_list(check_match, match_checks)
         ):
             continue
 
         state["reply"] = random.choice(reply.replies)
+        state["point"] = reply.point
+        state["limit"] = reply.limit
+        state["ident"] = 'A'+Pinyin().get_pinyin(reply.matches[0].match, '', convert='upper')+'A'
         return True
 
     return False
@@ -120,7 +143,7 @@ def get_reply_msgs(
 
     rt = reply.type
     msg = reply.message
-
+                    
     if rt == "plain":
         return [Message() + cast(str, msg)], None
 
@@ -144,6 +167,16 @@ def get_reply_msgs(
     # default normal
     return [Message(cast(str, msg))], None
 
+def likeabi_handle(state: T_State, user_id: str) -> bool:
+    if state["limit"] != 0:
+        sqlc.sql_insert_update(state["ident"], user_id, 1)
+        if int(sqlc.sql_select(state["ident"], user_id)) >= int(state["limit"])+1:
+            return False
+    
+    if state["point"] != 0:
+        sqlc.sql_insert_update("LIKEABI", user_id, state["point"])
+    
+    return True
 
 autoreply_matcher = on_message(
     rule=message_checker,
@@ -151,21 +184,28 @@ autoreply_matcher = on_message(
     priority=config.autoreply_priority,
 )
 
-
 @autoreply_matcher.handle()
-async def _(matcher: Matcher, state: T_State):
+async def _(matcher: Matcher, state: T_State, event: MessageEvent):
     reply: ReplyType = state["reply"]
+    if likeabi_handle(state, event.get_user_id()):
+        msg, delay = get_reply_msgs(reply)
+        for m in msg:
+            await matcher.send(m)
 
-    msg, delay = get_reply_msgs(reply)
-    for m in msg:
-        await matcher.send(m)
+            if delay:
+                await asyncio.sleep(random.randint(*delay) / 1000)
+    else:
+        await matcher.finish("今天的回复已经到上限啦")
 
-        if delay:
-            await asyncio.sleep(random.randint(*delay) / 1000)
+query = on_command("查询好感度", aliases={"好感度查询"}, priority=98 ,block=True)
 
+@query.handle()
+async def queryhandler(matcher: Matcher, event: MessageEvent):
+    result = "您的好感度为"+str(sqlc.sql_select("LIKEABI", int(event.get_user_id())))
+    reply = MessageSegment.reply(event.message_id)
+    await matcher.finish(reply + result)
 
-reload_matcher = on_command("重载自动回复", permission=SUPERUSER)
-
+reload_matcher = on_command("a重载自动回复", permission=SUPERUSER)
 
 @reload_matcher.handle()
 async def _(matcher: Matcher):
@@ -176,3 +216,8 @@ async def _(matcher: Matcher):
         await matcher.finish("重载失败，请检查后台输出")
     else:
         await matcher.finish("重载自动回复配置成功~")
+        
+async def clear():
+    await sqlc.sql_del_other()
+    
+scheduler.add_job(clear, "cron" , hour="0", minute="0" ,id="Clear")
